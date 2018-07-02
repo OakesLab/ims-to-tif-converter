@@ -1,5 +1,3 @@
-# from tkinter.filedialog import askopenfilename
-# from tkinter.filedialog import askdirectory
 import sys
 from skimage.external.tifffile import TiffWriter
 import numpy as np
