@@ -1,6 +1,16 @@
 # ims-to-tif-converter
 Converts Fusion IMS files to TIF files
 
+Requirements:
+sys
+PIL (pillow)
+scikit-image
+numpy
+h5py
+os
+glob
+
+Usage:
 1. Navigate to a directory containing only IMS files. The script will abort if
    there are any .tif files present.
 2. Run the script with "python <full_path_to_script> <downsample_level>" where
