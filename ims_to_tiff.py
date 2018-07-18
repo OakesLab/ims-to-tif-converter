@@ -87,7 +87,7 @@ def convert_to_tif(f_name):
         for i_t in range(n_time_points):
             if output_stack[i_t, :, 0].max() == 0:
                 first_bad_frame_index = i_t
-        out_tif.save(output_stack[0:first_bad_frame_index+1])
+        out_tif.save(output_stack[0:first_bad_frame_index])
 
         # Delete the mmap file
         del output_stack
