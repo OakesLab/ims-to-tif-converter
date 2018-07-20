@@ -19,8 +19,7 @@ def remove_blank_z_frames(tentative_stack, output_file, n_z_levels):
             first_bad_frame_index = i_z
 
     # Save the tif to the passed output file object
-    output_file.save(tentative_stack[:, first_bad_frame_index])
-
+    output_file.save(tentative_stack[:, 0:first_bad_frame_index])
 
 
 # Return the resolution levels, time points, channels, z levels, rows, cols, etc from a ims file
