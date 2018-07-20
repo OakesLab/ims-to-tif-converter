@@ -9,20 +9,18 @@ import glob
 import skimage.io as io
 
 
-def remove_blank_z_frames(tentative_stack, output_file, n_z_levels):
+def get_bad_frame_index(first_time_point):
     # Now go back through the frames looking for the zeros
     # Find the index of the first zero-frame.
     # Don't know why this bug exists, but it does, so have to deal.
-    first_bad_frame_index = n_z_levels-1
-    for i_z in range(n_z_levels):
-        if tentative_stack[0, i_z, 0].max() == 0:
+    first_bad_frame_index = first_time_point.shape[0] - 1
+    for i_z in range(first_time_point.shape[0])[::-1]:
+        if not first_time_point[i_z].any():
             first_bad_frame_index = i_z
-
-    # Save the tif to the passed output file object
-    output_file.save(tentative_stack[:, 0:first_bad_frame_index])
+    return first_bad_frame_index
 
 
-# Return the resolution levels, time points, channels, z levels, rows, cols, etc from a ims file
+# Return the resolution levels, time points, channes, z levels, rows, cols, etc from a ims file
 # Pass in an opened f5 file
 def get_h5_file_info(h5_dataset):
     # Get a list of all of the resolution options
@@ -53,7 +51,6 @@ def get_h5_file_info(h5_dataset):
 
 # Convert the ims file to a tif with no downsampling performed
 def convert_to_tif(f_name):
-    # f_name = askopenfilename(title='Choose File To Convert')
     read_file = h5py.File(f_name)
     base_data = read_file['DataSet']
 
@@ -64,32 +61,33 @@ def convert_to_tif(f_name):
     n_z_levels, z_levels, \
     n_rows, n_cols = get_h5_file_info(base_data)
 
+    # Get the index of the bad frame start
+    bad_index_start = get_bad_frame_index(np.array(base_data[resolution_levels[0]][time_points[0]][channels[0]]['Data']))
+
     banner_text = 'File Breakdown'
     print(banner_text)
     print('_'*len(banner_text))
     print('Channels: %d' % n_channels)
     print('Time Points: %d' % n_time_points)
-    print('Z Levels: %d' % n_z_levels)
+    print('Z Levels: %d' % (bad_index_start+1))
     print('Native (rows, cols): (%d,%d)'%(n_rows, n_cols))
     print('_'*len(banner_text))
 
-    f_ending = '.tif'
-
-    with TiffWriter(f_name.rsplit('.', maxsplit=1)[0].split('/')[-1] + f_ending, imagej=True) as out_tif:
+    with TiffWriter(f_name.rsplit('.', maxsplit=1)[0].split('/')[-1] + '.tif', imagej=True) as out_tif:
         mmap_fname = f_name+'.mmap'
-        output_stack = np.memmap(mmap_fname, dtype=np.uint16, shape=(n_time_points, n_z_levels, n_channels, n_rows, n_cols), mode='w+')
+        output_stack = np.memmap(mmap_fname, dtype=np.uint16, shape=(n_time_points, bad_index_start, n_channels, n_rows, n_cols), mode='w+')
 
         for i_t, t in enumerate(time_points):
             print('%s/%d'%(t,n_time_points-1))
-            for i_z, z_lvl in enumerate(z_levels):
-                print('%s/%d Z %d/%d'%(t, n_time_points-1, i_z+1, z_levels[-1]+1))
+            for i_z, z_lvl in enumerate(z_levels[:bad_index_start]):
+                print('%s/%d Z %d/%d'%(t, n_time_points-1, i_z+1, bad_index_start))
                 for i_channel, channel in enumerate(channels):
-                    output_stack[i_t][i_z][i_channel] = img_as_uint(np.array(base_data[resolution_levels[0]][time_points[i_t]][channels[i_channel]]['Data'][i_z]))
+                    output_stack[i_t, i_z, i_channel] = img_as_uint(np.array(base_data[resolution_levels[0]][time_points[i_t]][channels[i_channel]]['Data'][i_z]))
 
-        # Remove the buggy blank frames and write to disk
-        remove_blank_z_frames(output_stack, out_tif, n_z_levels)
+        # Save the reduced file
+        out_tif.save(output_stack)
 
-        # Delete the mmap file, and the memory allocated for the output stack
+        # Delete the reduced stack
         del output_stack
         os.remove(mmap_fname)
 
@@ -108,6 +106,9 @@ def downsample_to_tif(f_name, ds_factor=8):
     n_z_levels, z_levels, \
     n_rows, n_cols = get_h5_file_info(base_data)
 
+    n_time_points = 3
+    time_points = time_points[0:n_time_points]
+
     # Get the size of the downsampled image. Only going to downsample in x and y
     if ds_factor < 2:
         raise SystemExit('Downsample factor must be >=2')
@@ -115,12 +116,15 @@ def downsample_to_tif(f_name, ds_factor=8):
     test_ds_frame = pyramid_reduce(np.array(base_data[resolution_levels[0]][time_points[0]][channels[0]]['Data'][0]), downscale=ds_factor)
     ds_n_rows, ds_n_cols = test_ds_frame.shape
 
+    # Get the index of the bad frame start
+    bad_index_start = get_bad_frame_index(np.array(base_data[resolution_levels[0]][time_points[0]][channels[0]]['Data']))
+
     banner_text = 'File Breakdown'
     print(banner_text)
     print('_'*len(banner_text))
     print('Channels: %d' % n_channels)
     print('Time Points: %d' % n_time_points)
-    print('Z Levels: %d' % n_z_levels)
+    print('Z Levels: %d' % (bad_index_start+1))
     print('Native (rows, cols): (%d,%d)'%(n_rows, n_cols))
     print('Downsampled (rows, cols): (%d,%d)'%(ds_n_rows, ds_n_cols))
     print('_'*len(banner_text))
@@ -128,17 +132,17 @@ def downsample_to_tif(f_name, ds_factor=8):
     f_ending = '_downsampled_%dX.tif' % ds_factor
 
     with TiffWriter(f_name.rsplit('.', maxsplit=1)[0].split('/')[-1] + f_ending, imagej=True) as out_tif:
-        output_stack = np.zeros(shape=(n_time_points, n_z_levels, n_channels, ds_n_rows, ds_n_cols), dtype=np.uint16)
+        output_stack = np.zeros(shape=(n_time_points, bad_index_start, n_channels, ds_n_rows, ds_n_cols), dtype=np.uint16)
 
         for i_t, t in enumerate(time_points):
             print('%s/%d'%(t,n_time_points-1))
-            for i_z, z_lvl in enumerate(z_levels):
-                print('%s/%d Z %d/%d'%(t,n_time_points-1, i_z+1, z_levels[-1]+1))
+            for i_z, z_lvl in enumerate(z_levels[:bad_index_start]):
+                print('%s/%d Z %d/%d'%(t,n_time_points-1, i_z+1, bad_index_start))
                 for i_channel, channel in enumerate(channels):
-                    output_stack[i_t][i_z][i_channel] = img_as_uint(
+                    output_stack[i_t, i_z, i_channel] = img_as_uint(
                     pyramid_reduce(img_as_float(np.array(base_data[resolution_levels[0]][time_points[i_t]][channels[i_channel]]['Data'][i_z])), downscale=ds_factor))
 
-        remove_blank_z_frames(output_stack, out_tif, n_z_levels)
+        out_tif.save(output_stack)
         del output_stack
 
 
