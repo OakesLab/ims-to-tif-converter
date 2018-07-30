@@ -13,6 +13,9 @@ def get_bad_frame_index(first_time_point):
     # Now go back through the frames looking for the zeros
     # Find the index of the first zero-frame.
     # Don't know why this bug exists, but it does, so have to deal.
+    # Compensate for single z-level stacks that don't need bad frame search.
+    if first_time_point.shape[0] == 1:
+        return 1
     first_bad_frame_index = first_time_point.shape[0] - 1
     for i_z in range(first_time_point.shape[0])[::-1]:
         if not first_time_point[i_z].any():
