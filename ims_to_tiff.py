@@ -109,9 +109,6 @@ def downsample_to_tif(f_name, ds_factor=8):
     n_z_levels, z_levels, \
     n_rows, n_cols = get_h5_file_info(base_data)
 
-    n_time_points = 3
-    time_points = time_points[0:n_time_points]
-
     # Get the size of the downsampled image. Only going to downsample in x and y
     if ds_factor < 2:
         raise SystemExit('Downsample factor must be >=2')
